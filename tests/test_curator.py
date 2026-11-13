@@ -30,6 +30,13 @@ class FakePlex:
             self.members = {"50": ["100", "777"]}  # Elf shelved; an extra lurks
 
     # -- client surface used by curator.run / find_exact ----------------
+    def machine_id(self):
+        return "testmachine"
+
+    def item_uri(self, rating_key):
+        return curator.ITEM_URI_TEMPLATE.format(machine_id=self.machine_id(),
+                                                rating_key=rating_key)
+
     def sections(self):
         return [{"key": "1", "type": "movie", "title": "Movies"}]
 
@@ -107,6 +114,14 @@ class TestRun(unittest.TestCase):
     def test_audit_reports_extras(self):
         rc, out = run_quiet(FakePlex(), "audit")
         self.assertIn("EXTRA      Unlisted Extra (1999)", out)
+
+
+class TestItemUri(unittest.TestCase):
+    def test_uri_uses_server_form_with_machine_id(self):
+        fake = FakePlex()
+        self.assertEqual(
+            fake.item_uri("901"),
+            "server://testmachine/com.plexapp.plugins.library/library/metadata/901")
 
 
 class TestParseList(unittest.TestCase):

@@ -35,12 +35,15 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
-# How Plex is told which item to add to a collection. Kept as one constant
-# so the form is easy to adjust if a server version expects a variant.
-ITEM_URI_TEMPLATE = "library:///library/metadata/{rating_key}"
+# How Plex is told which item to add to a collection. Current servers
+# require the server:// form carrying the server's machine identifier
+# (read once from /identity); the simpler library:/// form is rejected
+# with HTTP 400. Verified live — see README "Live verification".
+ITEM_URI_TEMPLATE = "server://{machine_id}/com.plexapp.plugins.library/library/metadata/{rating_key}"
 
 
 def normalize_title(t):
@@ -85,6 +88,17 @@ class PlexClient:
     def __init__(self, base_url, token):
         self.base = base_url.rstrip("/")
         self.token = token
+        self._machine_id = None
+
+    def machine_id(self):
+        if self._machine_id is None:
+            data = self.get("/identity")
+            self._machine_id = data.get("MediaContainer", {}).get("machineIdentifier")
+        return self._machine_id
+
+    def item_uri(self, rating_key):
+        return ITEM_URI_TEMPLATE.format(machine_id=self.machine_id(),
+                                        rating_key=rating_key)
 
     def _request(self, method, path, params=None):
         url = self.base + path
@@ -140,12 +154,12 @@ class PlexClient:
             "type": 1,
             "title": title,
             "sectionId": section_key,
-            "uri": ITEM_URI_TEMPLATE.format(rating_key=first_item_key),
+            "uri": self.item_uri(first_item_key),
         })
 
     def add_to_collection(self, collection_key, item_key):
         return self.put(f"/library/collections/{collection_key}/items", {
-            "uri": ITEM_URI_TEMPLATE.format(rating_key=item_key),
+            "uri": self.item_uri(item_key),
         })
 
 
@@ -213,24 +227,39 @@ def run(client, entries, collection_name, library_name, mode):
         if not to_add:
             print("Nothing to add — every found item is already a member (verified).")
             return 0
+        add_errors = []
         if coll is None:
             first = to_add[0][2]
             print(f"Creating collection {collection_name!r} with {first.get('title')!r}…")
-            client.create_collection(skey, collection_name, first["ratingKey"])
-            coll = next(c for c in client.collections(skey) if c.get("title") == collection_name)
+            try:
+                client.create_collection(skey, collection_name, first["ratingKey"])
+                coll = next(c for c in client.collections(skey) if c.get("title") == collection_name)
+            except Exception as exc:  # noqa: BLE001 — reported below, not hidden
+                print(f"  FAILED     could not create collection: {exc}")
+                return 1
             to_add = to_add[1:]
         for title, year, item in to_add:
-            client.add_to_collection(coll["ratingKey"], item["ratingKey"])
+            try:
+                client.add_to_collection(coll["ratingKey"], item["ratingKey"])
+            except Exception as exc:  # noqa: BLE001 — one bad add must not abort the rest
+                add_errors.append((title, year, exc))
+        for title, year, exc in add_errors:
+            print(f"  FAILED     {title} ({year}) — add error: {exc}")
         # Verify against a fresh read — never trust the write response.
         after = {m["ratingKey"] for m in client.collection_children(coll["ratingKey"])}
         added = [(t, y, it) for t, y, it in found if it["ratingKey"] not in member_keys]
-        failed = [(t, y) for t, y, it in added if it["ratingKey"] not in after]
+        errored = {(t, y) for t, y, _ in add_errors}
+        failed = [(t, y) for t, y, it in added
+                  if it["ratingKey"] not in after and (t, y) not in errored]
         if failed:
             for t, y in failed:
                 print(f"  FAILED     {t} ({y}) — add did not land; not a member on re-read")
             return 1
         for t, y, _ in added:
-            print(f"  ADDED      {t} ({y}) — membership verified on re-read")
+            if (t, y) not in errored:
+                print(f"  ADDED      {t} ({y}) — membership verified on re-read")
+        if add_errors:
+            return 1
     return 0
 
 

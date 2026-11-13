@@ -61,7 +61,30 @@ Krampus (2015)
 ```
 
 `lists/christmas-movies.csv` is a worked example: a Christmas movie shelf
-curated by hand, title by title.
+curated by hand, title by title — a canonical core plus a hand-picked
+horror set and specials, exactly as the shelf itself grew.
+
+## Live verification (2026-11-13)
+
+This tool was run live against a real 406-movie library, and the live
+run earned its keep:
+
+- **Check and audit were exact**: 21 list entries → 12 in the library,
+  9 genuinely missing (confirmed title-by-title against the server —
+  including one believed-owned title that simply isn't there), and the
+  audit's extras were precisely the shelf's hand-added titles, which were
+  then added to the list.
+- **The first apply attempt failed**: this server rejects the
+  `library:///library/metadata/…` item URI form with HTTP 400 (and
+  accepts a create-collection request while silently ignoring that
+  form's seed item). The tool now uses the
+  `server://<machineId>/com.plexapp.plugins.library/library/metadata/…`
+  form, with the machine ID read from `/identity` — after which
+  create, adds, and membership re-reads all verified end-to-end on a
+  scratch collection, deleted afterwards.
+
+Lesson kept in the code as a comment: a write API returning success is
+not evidence the write landed. Re-read.
 
 ## What the modes report
 
@@ -103,7 +126,7 @@ Distilled from a real home-library curation workflow in which a Christmas
 collection of 90+ items was rebuilt from a hand-verified list after a
 keyword-built version proved unreliable — the rebuild found the shelf
 both over- and under-inclusive. The list in `lists/` is that shelf's
-movie core.
+full movie set as of the live audit above.
 
 ---
 
