@@ -24,6 +24,8 @@ This tool inverts the flow:
    and proves every added item is actually a member before reporting
    success. A write response is not evidence; a re-read is.
 
+![The curation flow](docs/curator-flow.svg)
+
 ## Usage
 
 Stdlib-only Python 3. No dependencies.
@@ -85,6 +87,29 @@ run earned its keep:
 
 Lesson kept in the code as a comment: a write API returning success is
 not evidence the write landed. Re-read.
+
+## Since then (Nov 23, 2026)
+
+The library kept growing past the 406 movies of the live run (498 titles
+tracked in the library manager as of Nov 21), and the same exact-match,
+add-only, verify-after-write discipline now maintains **21 collections**:
+
+- **Movies (10):** The Christmas Shelf (90+), Kafkaesque (23),
+  Psychological Thrillers (39), Stoner Flicks, Time Loops, Dream Logic,
+  Zombies, One Location, Liminal Spaces, Doubles & Impostors (11).
+- **TV, show-level (11):** Best of Eps, Best of TV, Christmas Episodes,
+  Simpsons Golden Era, Britcoms & Imports (19), Adult Animation (21),
+  Sketch & Chaos (13), Limited Series (10), One Season Wonders (7),
+  Dystopias & Dark Futures (9), True Crime & Dark Docs (6).
+
+Two honest footnotes. The TV shelves are show-level collections; the
+episode-level addressing discussed under Scope is still unbuilt. And a
+scheduled watch now applies the same add-only rule on its own: five
+requested stoner comedies are being shelved into Stoner Flicks as their
+files land (9 titles in, 5 to go), each addition verified by re-read
+before it counts. Three further shelves (One Bad Night, Cults &
+Communes, Body Horror) are designed and deliberately unbuilt — curation
+stays a decision, not a reflex. The test suite still passes: 8 tests, OK.
 
 ## What the modes report
 

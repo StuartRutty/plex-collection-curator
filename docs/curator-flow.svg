@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="240" viewBox="0 0 900 240" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1a7f37"/>
+    </marker>
+  </defs>
+
+  <rect x="10" y="40" width="170" height="64" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="95" y="67" text-anchor="middle" font-size="14.5" font-weight="600" fill="#24292f">Verified list</text>
+  <text x="95" y="87" text-anchor="middle" font-size="12" fill="#57606a">title + year, curated by hand</text>
+
+  <rect x="245" y="40" width="170" height="64" rx="8" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+  <text x="330" y="67" text-anchor="middle" font-size="14.5" font-weight="600" fill="#24292f">Exact match</text>
+  <text x="330" y="87" text-anchor="middle" font-size="12" fill="#57606a">title AND year, or it's missing</text>
+
+  <rect x="480" y="40" width="170" height="64" rx="8" fill="#fff8c5" stroke="#d4a72c" stroke-width="1.5"/>
+  <text x="565" y="67" text-anchor="middle" font-size="14.5" font-weight="600" fill="#24292f">check / audit</text>
+  <text x="565" y="87" text-anchor="middle" font-size="12" fill="#57606a">dry-run by default</text>
+
+  <rect x="715" y="40" width="170" height="64" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="800" y="67" text-anchor="middle" font-size="14.5" font-weight="600" fill="#24292f">apply</text>
+  <text x="800" y="87" text-anchor="middle" font-size="12" fill="#57606a">adds only, never removes</text>
+
+  <rect x="480" y="150" width="170" height="56" rx="8" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+  <text x="565" y="174" text-anchor="middle" font-size="14.5" font-weight="600" fill="#24292f">Re-read to verify</text>
+  <text x="565" y="193" text-anchor="middle" font-size="12" fill="#57606a">a write response is not evidence</text>
+
+  <path d="M 180 72 L 243 72" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 415 72 L 478 72" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 650 72 L 713 72" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 760 104 C 720 140, 640 138, 590 148" fill="none" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+
+  <text x="450" y="232" text-anchor="middle" font-size="12.5" fill="#57606a">Near-misses are reported, never shelved. Ambiguity stops for a human.</text>
+</svg>
