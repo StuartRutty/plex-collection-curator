@@ -59,27 +59,72 @@ def parse_list(path):
     starting with # are skipped. A CSV header row is skipped when present.
     """
     entries = []
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         text = f.read()
-    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
-    if not lines:
+    numbered = [
+        (lineno, ln)
+        for lineno, ln in enumerate(text.splitlines(), 1)
+        if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    if not numbered:
         return entries
-    # CSV when the first line looks like title,year
-    first = lines[0]
-    if "," in first and re.search(r",\s*\d{4}\s*$", first) or first.lower().startswith("title"):
-        for row in csv.reader(lines):
-            if not row or row[0].strip().lower() == "title":
+    # CSV when the first non-blank line yields >= 2 fields and is either
+    # a title,year header or has a 4-digit year in the second field.
+    first_row = next(csv.reader([numbered[0][1]]), [])
+    is_header = [c.strip().lower() for c in first_row] == ["title", "year"]
+    is_csv = len(first_row) >= 2 and (
+        is_header or bool(re.fullmatch(r"\d{4}", first_row[1].strip()))
+    )
+    if is_csv:
+        for idx, (lineno, ln) in enumerate(numbered):
+            row = next(csv.reader([ln]), [])
+            if idx == 0 and is_header:
                 continue
+            if len(row) < 2:
+                raise ValueError(
+                    f"invalid CSV row on line {lineno}: {ln!r} (expected title,year)"
+                )
             title = row[0].strip()
-            year = int(row[1].strip())
-            entries.append((title, year))
+            year_str = row[1].strip()
+            if not title or not re.fullmatch(r"\d{4}", year_str):
+                raise ValueError(
+                    f"invalid CSV row on line {lineno}: {ln!r} "
+                    "(expected non-empty title and 4-digit year)"
+                )
+            entries.append((title, int(year_str)))
         return entries
-    for ln in lines:
-        m = re.match(r"^(.*?)\s*\((\d{4})\)\s*$", ln)
-        if not m:
+    for _, ln in numbered:
+        m = re.match(r"^(.+?)\s*\((\d{4})\)\s*$", ln)
+        if not m or not m.group(1).strip():
             raise ValueError(f"cannot parse list line: {ln!r} (want 'Title (Year)' or CSV title,year)")
         entries.append((m.group(1).strip(), int(m.group(2))))
     return entries
+
+
+def _url_origin(url):
+    p = urllib.parse.urlsplit(url)
+    scheme = (p.scheme or "").lower()
+    host = (p.hostname or "").lower()
+    port = p.port
+    if port is None:
+        port = 443 if scheme == "https" else 80 if scheme == "http" else None
+    return scheme, host, port
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Strip X-Plex-Token on cross-origin or scheme-changing redirects."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is None:
+            return None
+        old_origin = _url_origin(req.full_url)
+        new_origin = _url_origin(urllib.parse.urljoin(req.full_url, new_req.full_url))
+        if old_origin != new_origin or (old_origin[0] == "https" and new_origin[0] == "http"):
+            for hdrs in (new_req.headers, new_req.unredirected_hdrs):
+                for k in [k for k in hdrs if k.lower() == "x-plex-token"]:
+                    del hdrs[k]
+        return new_req
 
 
 class PlexClient:
@@ -89,11 +134,15 @@ class PlexClient:
         self.base = base_url.rstrip("/")
         self.token = token
         self._machine_id = None
+        self._opener = urllib.request.build_opener(_SafeRedirectHandler)
 
     def machine_id(self):
-        if self._machine_id is None:
+        if not self._machine_id:
             data = self.get("/identity")
-            self._machine_id = data.get("MediaContainer", {}).get("machineIdentifier")
+            mid = data.get("MediaContainer", {}).get("machineIdentifier")
+            if not mid:
+                raise RuntimeError("Plex /identity response missing machineIdentifier")
+            self._machine_id = mid
         return self._machine_id
 
     def item_uri(self, rating_key):
@@ -107,7 +156,7 @@ class PlexClient:
         req = urllib.request.Request(url, method=method)
         req.add_header("Accept", "application/json")
         req.add_header("X-Plex-Token", self.token)
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with self._opener.open(req, timeout=30) as resp:
             body = resp.read()
         return json.loads(body) if body else {}
 
@@ -132,9 +181,17 @@ class PlexClient:
                 if s.get("title") == name:
                     return s
             raise SystemExit(f"no movie library named {name!r}")
-        if len(secs) != 1:
-            raise SystemExit("multiple movie libraries; pass --library NAME")
+        if not secs:
+            raise SystemExit("no movie libraries found on server")
+        if len(secs) > 1:
+            names = ", ".join(s.get("title") or "" for s in secs)
+            raise SystemExit(f"multiple movie libraries; pass --library NAME (available: {names})")
         return secs[0]
+
+    def all_items(self, section_key):
+        """Return all Metadata items in a library section."""
+        data = self.get(f"/library/sections/{section_key}/all")
+        return data.get("MediaContainer", {}).get("Metadata", [])
 
     def search(self, section_key, title):
         """Server-side title search; returns candidate Metadata items."""
@@ -167,7 +224,7 @@ def find_exact(client, section_key, title, year):
     """Return (status, item) — status in found / missing / ambiguous."""
     want = normalize_title(title)
     exact = []
-    for item in client.search(section_key, title):
+    for item in client.all_items(section_key):
         if normalize_title(item.get("title")) == want and item.get("year") == year:
             exact.append(item)
     if len(exact) == 1:
@@ -190,9 +247,20 @@ def run(client, entries, collection_name, library_name, mode):
     if coll:
         member_keys = {m["ratingKey"] for m in client.collection_children(coll["ratingKey"])}
 
+    unique_entries = []
+    duplicates = []
+    seen = set()
+    for title, year in entries:
+        key = (normalize_title(title), year)
+        if key in seen:
+            duplicates.append((title, year))
+            continue
+        seen.add(key)
+        unique_entries.append((title, year))
+
     found, missing, ambiguous, to_add = [], [], [], []
     listed_keys = set()
-    for title, year in entries:
+    for title, year in unique_entries:
         status, item = find_exact(client, skey, title, year)
         if status == "found":
             found.append((title, year, item))
@@ -206,9 +274,11 @@ def run(client, entries, collection_name, library_name, mode):
 
     print(f"Library: {section.get('title')}  Collection: {collection_name}"
           f"{'' if coll else ' (does not exist yet)'}")
-    print(f"List: {len(entries)} entries — {len(found)} in library, "
+    print(f"List: {len(unique_entries)} entries — {len(found)} in library, "
           f"{len(missing)} missing, {len(ambiguous)} ambiguous, "
           f"{len(to_add)} not yet in the collection")
+    for title, year in duplicates:
+        print(f"  DUPLICATE  {title} ({year}) — already on list; skipped")
     for title, year in missing:
         print(f"  MISSING    {title} ({year})")
     for title, year, items in ambiguous:
@@ -275,9 +345,13 @@ def main(argv=None):
     if not args.url or not args.token:
         print("error: set --url/--token or PLEX_URL/PLEX_TOKEN", file=sys.stderr)
         return 2
-    entries = parse_list(args.list)
-    client = PlexClient(args.url, args.token)
-    return run(client, entries, args.collection, args.library, args.mode)
+    try:
+        entries = parse_list(args.list)
+        client = PlexClient(args.url, args.token)
+        return run(client, entries, args.collection, args.library, args.mode)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

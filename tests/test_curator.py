@@ -6,6 +6,7 @@ a same-title item from the wrong year, and a title that is absent.
 import io
 import os
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 
@@ -18,6 +19,7 @@ class FakePlex:
         self.library = [
             {"ratingKey": "100", "title": "Elf", "year": 2003},
             {"ratingKey": "101", "title": "Krampus", "year": 2015},
+            {"ratingKey": "102", "title": "It's a Wonderful Life", "year": 1946},
             # Same title, wrong year — the classic trap.
             {"ratingKey": "900", "title": "The Lodge", "year": 2014},
             {"ratingKey": "901", "title": "The Lodge", "year": 2019},
@@ -42,6 +44,9 @@ class FakePlex:
 
     def movie_section(self, name=None):
         return self.sections()[0]
+
+    def all_items(self, section_key):
+        return list(self.library)
 
     def search(self, section_key, title):
         want = curator.normalize_title(title)
@@ -86,6 +91,17 @@ class TestFindExact(unittest.TestCase):
         status, _ = curator.find_exact(fake, "1", "The Lodge", 2020)
         self.assertEqual(status, "missing")
 
+    def test_curly_apostrophe_matches_straight_via_all_items(self):
+        fake = FakePlex()
+
+        def fail_search(*args, **kwargs):
+            raise AssertionError("find_exact must use all_items, not search")
+
+        fake.search = fail_search
+        status, item = curator.find_exact(fake, "1", "It’s a Wonderful Life", 1946)
+        self.assertEqual(status, "found")
+        self.assertEqual(item["ratingKey"], "102")
+
 
 class TestRun(unittest.TestCase):
     def test_check_reports_counts(self):
@@ -115,6 +131,18 @@ class TestRun(unittest.TestCase):
         rc, out = run_quiet(FakePlex(), "audit")
         self.assertIn("EXTRA      Unlisted Extra (1999)", out)
 
+    def test_duplicate_entries_added_once(self):
+        fake = FakePlex()
+        entries = [("Krampus", 2015), ("krampus", 2015), ("Krampus", 2015)]
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = curator.run(fake, entries, "The Christmas Shelf", None, "apply")
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(fake.members["50"].count("101"), 1)
+        self.assertIn("DUPLICATE  krampus (2015)", out)
+        self.assertIn("DUPLICATE  Krampus (2015)", out)
+
 
 class TestItemUri(unittest.TestCase):
     def test_uri_uses_server_form_with_machine_id(self):
@@ -126,17 +154,43 @@ class TestItemUri(unittest.TestCase):
 
 class TestParseList(unittest.TestCase):
     def test_csv_and_plain_formats(self):
-        import tempfile
-        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
-            f.write("title,year\nElf,2003\n\"Home Alone 2: Lost in New York\",1992\n")
-            csv_path = f.name
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
-            f.write("# comment\nElf (2003)\n\nKrampus (2015)\n")
-            txt_path = f.name
-        self.assertEqual(curator.parse_list(csv_path),
-                         [("Elf", 2003), ("Home Alone 2: Lost in New York", 1992)])
-        self.assertEqual(curator.parse_list(txt_path),
-                         [("Elf", 2003), ("Krampus", 2015)])
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, "list.csv")
+            txt_path = os.path.join(tmp, "list.txt")
+            with open(csv_path, "w", encoding="utf-8") as f:
+                f.write("title,year\nElf,2003\n\"Home Alone 2: Lost in New York\",1992\n")
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write("# comment\nElf (2003)\n\nKrampus (2015)\n")
+            self.assertEqual(curator.parse_list(csv_path),
+                             [("Elf", 2003), ("Home Alone 2: Lost in New York", 1992)])
+            self.assertEqual(curator.parse_list(txt_path),
+                             [("Elf", 2003), ("Krampus", 2015)])
+
+    def test_utf8_bom_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, "bom.csv")
+            with open(csv_path, "w", encoding="utf-8-sig") as f:
+                f.write("title,year\nElf,2003\nKrampus,2015\n")
+            self.assertEqual(curator.parse_list(csv_path),
+                             [("Elf", 2003), ("Krampus", 2015)])
+
+    def test_plain_text_starting_with_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            txt_path = os.path.join(tmp, "titles.txt")
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write("Title of Show (2008)\nElf (2003)\n")
+            self.assertEqual(curator.parse_list(txt_path),
+                             [("Title of Show", 2008), ("Elf", 2003)])
+
+    def test_malformed_csv_raises_with_line_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, "bad.csv")
+            with open(csv_path, "w", encoding="utf-8") as f:
+                f.write("title,year\nElf,2003\nBadMovie,notayear\n")
+            with self.assertRaises(ValueError) as ctx:
+                curator.parse_list(csv_path)
+            self.assertIn("line 3", str(ctx.exception))
+            self.assertIn("BadMovie,notayear", str(ctx.exception))
 
 
 if __name__ == "__main__":
