@@ -88,28 +88,19 @@ run earned its keep:
 Lesson kept in the code as a comment: a write API returning success is
 not evidence the write landed. Re-read.
 
-## Since then (Nov 23, 2026)
+## In production use
 
-The library kept growing past the 406 movies of the live run (498 titles
-tracked in the library manager as of Nov 21), and the same exact-match,
-add-only, verify-after-write discipline now maintains **21 collections**:
-
-- **Movies (10):** The Christmas Shelf (90+), Kafkaesque (23),
-  Psychological Thrillers (39), Stoner Flicks, Time Loops, Dream Logic,
-  Zombies, One Location, Liminal Spaces, Doubles & Impostors (11).
-- **TV, show-level (11):** Best of Eps, Best of TV, Christmas Episodes,
-  Simpsons Golden Era, Britcoms & Imports (19), Adult Animation (21),
-  Sketch & Chaos (13), Limited Series (10), One Season Wonders (7),
-  Dystopias & Dark Futures (9), True Crime & Dark Docs (6).
+The same exact-match, add-only, verify-after-write discipline that the
+live run proved now maintains the library's collections day to day —
+movie shelves curated title by title, and show-level TV collections
+alongside them. A scheduled watch applies the same add-only rule on its
+own: requested titles are shelved as their files land, each addition
+verified by re-read before it counts.
 
 Two honest footnotes. The TV shelves are show-level collections; the
-episode-level addressing discussed under Scope is still unbuilt. And a
-scheduled watch now applies the same add-only rule on its own: five
-requested stoner comedies are being shelved into Stoner Flicks as their
-files land (9 titles in, 5 to go), each addition verified by re-read
-before it counts. Three further shelves (One Bad Night, Cults &
-Communes, Body Horror) are designed and deliberately unbuilt — curation
-stays a decision, not a reflex. The test suite still passes: 8 tests, OK.
+episode-level addressing discussed under Scope is still unbuilt. And
+further shelves are designed and deliberately unbuilt — curation stays
+a decision, not a reflex. The test suite passes.
 
 ## What the modes report
 
